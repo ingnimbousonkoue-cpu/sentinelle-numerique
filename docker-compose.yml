@@ -1,0 +1,90 @@
+version: "3.9"
+
+services:
+
+  forensics-image:
+    build: ./services/forensics-image
+    container_name: forensics
+    ports:
+      - "8001:8001"
+    volumes:
+      - uploads_data:/app/uploads
+      - ./services/forensics-image:/app
+    environment:
+      - HIVE_API_KEY=${HIVE_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - DATABASE_URL=postgresql://forensics_user:${DB_PASSWORD}@postgres:5432/forensics_db
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - sentinelle_net
+    restart: unless-stopped
+
+  dashboard:
+    build: ./dashboard
+    container_name: dashboard
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./dashboard:/app
+      - /app/node_modules
+    environment:
+      - REACT_APP_API_URL=http://gateway:80
+    depends_on:
+      - gateway
+    networks:
+      - sentinelle_net
+    restart: unless-stopped
+
+  gateway:
+    image: nginx:1.25-alpine
+    container_name: gateway
+    ports:
+      - "80:80"
+    volumes:
+      - ./gateway/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - forensics-image
+      - dashboard
+    networks:
+      - sentinelle_net
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    environment:
+      - POSTGRES_DB=forensics_db
+      - POSTGRES_USER=forensics_user
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+    networks:
+      - sentinelle_net
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --save 60 1 --loglevel warning
+    networks:
+      - sentinelle_net
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  uploads_data:
+  redis_data:
+
+networks:
+  sentinelle_net:
+    driver: bridge
