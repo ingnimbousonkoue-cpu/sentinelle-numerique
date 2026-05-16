@@ -1,0 +1,187 @@
+# services/forensics-image/openapi.yaml
+openapi: "3.0.3"
+info:
+  title: Forensics Image API
+  version: "1.0.0"
+  description: Service d'analyse forensique d'images – Groupe 1 Sentinelle Numérique
+
+servers:
+  - url: http://localhost:8001
+    description: Développement local
+  - url: http://gateway:80/api
+    description: Via Gateway (réseau Docker)
+
+paths:
+
+  /analyze/image:
+    post:
+      summary: Analyse complète (EXIF + ELA + IA)
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                use_ai:
+                  type: boolean
+                  default: true
+      responses:
+        "200":
+          description: Analyse réussie
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalysisResult"
+        "422":
+          $ref: "#/components/responses/InvalidFormat"
+        "500":
+          $ref: "#/components/responses/ServerError"
+
+  /analyze/{id}:
+    get:
+      summary: Récupérer un rapport existant
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: format
+          in: query
+          schema:
+            type: string
+            enum: [json, pdf]
+            default: json
+      responses:
+        "200":
+          description: Rapport trouvé
+        "404":
+          description: Analyse introuvable
+
+  /analyze/exif:
+    post:
+      summary: Analyse EXIF uniquement
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        "200":
+          description: Données EXIF extraites
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EXIFData"
+
+  /analyze/noise:
+    post:
+      summary: Analyse ELA uniquement
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                quality:
+                  type: integer
+                  default: 90
+      responses:
+        "200":
+          description: Résultats ELA
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ELAResult"
+
+  /health:
+    get:
+      summary: Vérification état du service
+      responses:
+        "200":
+          description: Service opérationnel
+
+components:
+  schemas:
+    AnalysisResult:
+      type: object
+      properties:
+        image_id:
+          type: string
+        score_confiance:
+          type: integer
+          minimum: 0
+          maximum: 100
+        niveau:
+          type: string
+          enum: [Élevé, Modéré, Faible]
+        exif:
+          $ref: "#/components/schemas/EXIFData"
+        ela:
+          $ref: "#/components/schemas/ELAResult"
+        timestamp:
+          type: string
+          format: date-time
+
+    EXIFData:
+      type: object
+      properties:
+        make:
+          type: string
+          nullable: true
+        model:
+          type: string
+          nullable: true
+        software:
+          type: string
+          nullable: true
+        gps_coherent:
+          type: boolean
+        editor_detected:
+          type: boolean
+        exif_score:
+          type: integer
+
+    ELAResult:
+      type: object
+      properties:
+        ela_score:
+          type: number
+        inpainting_detected:
+          type: boolean
+        suspect_zones:
+          type: array
+          items:
+            type: array
+            items:
+              type: integer
+        heatmap_b64:
+          type: string
+        noise_score:
+          type: integer
+
+  responses:
+    InvalidFormat:
+      description: Format de fichier non supporté
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              detail:
+                type: string
+    ServerError:
+      description: Erreur interne du serveur
